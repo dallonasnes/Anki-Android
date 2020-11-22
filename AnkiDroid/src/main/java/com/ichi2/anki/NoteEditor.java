@@ -31,6 +31,7 @@ import android.database.Cursor;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 
@@ -64,8 +65,10 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.google.gson.Gson;
 import com.ichi2.anki.dialogs.ConfirmationDialog;
 import com.ichi2.anki.dialogs.DiscardChangesDialog;
 import com.ichi2.anki.dialogs.IntegerDialog;
@@ -74,12 +77,14 @@ import com.ichi2.anki.dialogs.TagsDialog;
 import com.ichi2.anki.exception.ConfirmModSchemaException;
 import com.ichi2.anki.multimediacard.IMultimediaEditableNote;
 import com.ichi2.anki.multimediacard.activity.MultimediaEditFieldActivity;
+import com.ichi2.anki.multimediacard.activity.PickStringDialogFragment;
 import com.ichi2.anki.multimediacard.fields.AudioClipField;
 import com.ichi2.anki.multimediacard.fields.AudioRecordingField;
 import com.ichi2.anki.multimediacard.fields.EFieldType;
 import com.ichi2.anki.multimediacard.fields.IField;
 import com.ichi2.anki.multimediacard.fields.ImageField;
 import com.ichi2.anki.multimediacard.fields.TextField;
+import com.ichi2.anki.multimediacard.glosbe.json.Response;
 import com.ichi2.anki.multimediacard.impl.MultimediaEditableNote;
 import com.ichi2.anki.noteeditor.FieldState;
 import com.ichi2.anki.noteeditor.FieldState.FieldChangeType;
@@ -87,7 +92,9 @@ import com.ichi2.anki.noteeditor.CustomToolbarButton;
 import com.ichi2.anki.noteeditor.Toolbar;
 import com.ichi2.anki.receiver.SdCardReceiver;
 import com.ichi2.anki.servicelayer.NoteService;
+import com.ichi2.anki.web.HttpFetcher;
 import com.ichi2.async.CollectionTask;
+import com.ichi2.async.Connection;
 import com.ichi2.async.TaskListenerWithContext;
 import com.ichi2.compat.CompatHelper;
 import com.ichi2.libanki.Card;
@@ -182,6 +189,7 @@ public class NoteEditor extends AnkiActivity {
     public static final int CALLER_STUDYOPTIONS = 2;
     public static final int CALLER_DECKPICKER = 3;
     public static final int CALLER_REVIEWER_ADD = 11;
+    public static final int CALLER_DECKPICKER_FOR_GEN_NOTES = 12;
 
     public static final int CALLER_CARDBROWSER_EDIT = 6;
     public static final int CALLER_CARDBROWSER_ADD = 7;
@@ -232,6 +240,23 @@ public class NoteEditor extends AnkiActivity {
 
     /* indicates if a new note is added or a card is edited */
     private boolean mAddNote;
+
+    /**
+     * Begin custom GenNotesFromContent feature section
+     */
+    /* indicates if user selected to generate notes from content */
+    private boolean mGenNotesFromContent;
+    //private android.app.ProgressDialog progressDialog;
+    private BackgroundGet mRemoteServerAsyncRequest = null;
+    //remember that localhost points to the mobile device, not my computer
+    private String mWebServiceAddress = "https://song-to-anki.herokuapp.com/mobile/content-to-anki/"; //don't forget the trailing / in the host address
+    private String mQueryString = null;
+    private String mResponse = null;
+    private String mPossibleNotes = null;
+
+    /**
+     * End custom GenNotesFromContent feature section
+     */
 
     private boolean mAedictIntent;
 
@@ -352,6 +377,14 @@ public class NoteEditor extends AnkiActivity {
         UIUtils.showThemedToast(this, getResources().getString(errorMessageId), false);
     }
 
+    private void displayErrorHandlingCustomContent() {
+        int errorMessageId = getGenNotesFromContentErrorResource();
+        UIUtils.showThemedToast(this, getResources().getString(errorMessageId), false);
+    }
+
+    protected @StringRes int getGenNotesFromContentErrorResource(){
+        return R.string.note_editor_failed_to_parse_input_for_gen_notes_from_content;
+    }
 
     protected @StringRes int getAddNoteErrorResource() {
         //COULD_BE_BETTER: We currently don't perform edits inside this class (wat), so we only handle adds.
@@ -399,6 +432,7 @@ public class NoteEditor extends AnkiActivity {
         if (savedInstanceState != null) {
             mCaller = savedInstanceState.getInt("caller");
             mAddNote = savedInstanceState.getBoolean("addNote");
+            mGenNotesFromContent = savedInstanceState.getBoolean("genNotesFromContent");
             mCurrentDid = savedInstanceState.getLong("did");
             mSelectedTags = savedInstanceState.getStringArrayList("tags");
             mReloadRequired = savedInstanceState.getBoolean("reloadRequired");
@@ -411,6 +445,8 @@ public class NoteEditor extends AnkiActivity {
                 if ((ACTION_CREATE_FLASHCARD.equals(action) || ACTION_CREATE_FLASHCARD_SEND.equals(action) || ACTION_PROCESS_TEXT.equals(action))) {
                     mCaller = CALLER_CARDEDITOR_INTENT_ADD;
                 }
+            } else if (mCaller == CALLER_DECKPICKER_FOR_GEN_NOTES){
+                mGenNotesFromContent = true;
             }
         }
 
@@ -428,6 +464,7 @@ public class NoteEditor extends AnkiActivity {
         Timber.i("Saving instance");
         savedInstanceState.putInt("caller", mCaller);
         savedInstanceState.putBoolean("addNote", mAddNote);
+        savedInstanceState.putBoolean("genNotesFromContent", mGenNotesFromContent);
         savedInstanceState.putLong("did", mCurrentDid);
         savedInstanceState.putBoolean("changed", mChanged);
         savedInstanceState.putBoolean("reloadRequired", mReloadRequired);
@@ -569,7 +606,7 @@ public class NoteEditor extends AnkiActivity {
         // Deck Selector
         TextView deckTextView = findViewById(R.id.CardEditorDeckText);
         // If edit mode and more than one card template distinguish between "Deck" and "Card deck"
-        if (!mAddNote && mEditorNote.model().getJSONArray("tmpls").length()>1) {
+        if (!mGenNotesFromContent && !mAddNote && mEditorNote.model().getJSONArray("tmpls").length() > 1) {
             deckTextView.setText(R.string.CardEditorCardDeck);
         }
         mNoteDeckSpinner = findViewById(R.id.note_deck_spinner);
@@ -597,6 +634,7 @@ public class NoteEditor extends AnkiActivity {
                 mCurrentDid = mAllDeckIds.get(pos);
             }
 
+
             @Override
             public void onNothingSelected(AdapterView<?> parent) {
                 // Do Nothing
@@ -609,7 +647,16 @@ public class NoteEditor extends AnkiActivity {
 
         setNote(mEditorNote, FieldChangeType.onActivityCreation(shouldReplaceNewlines()));
 
-        if (mAddNote) {
+        if (mGenNotesFromContent){
+            //setup url entry and language selection
+            mNoteTypeSpinner.setOnItemSelectedListener(new SetNoteTypeListener());
+            setTitle(R.string.menu_gen_notes_from_online_content);
+
+            //make two popup input fields:
+            //first to get language
+            //second to get text or one url
+
+        } else if (mAddNote) {
             mNoteTypeSpinner.setOnItemSelectedListener(new SetNoteTypeListener());
             setTitle(R.string.menu_add_note);
             // set information transferred by intent
@@ -645,15 +692,17 @@ public class NoteEditor extends AnkiActivity {
             showTagsDialog();
         });
 
-        if (!mAddNote && mCurrentEditedCard != null) {
+        if (!mGenNotesFromContent && !mAddNote && mCurrentEditedCard != null) {
             Timber.i("onCollectionLoaded() Edit note activity successfully started with card id %d", mCurrentEditedCard.getId());
         }
         if (mAddNote) {
             Timber.i("onCollectionLoaded() Edit note activity successfully started in add card mode with node id %d", mEditorNote.getId());
+        } else if (mGenNotesFromContent) {
+            Timber.i("onCollectionLoaded() Gen notes activity successfully started in add card mode with node id %d", mEditorNote.getId());
         }
 
-        // don't open keyboard if not adding note
-        if (!mAddNote) {
+        // don't open keyboard if not adding note or adding input content
+        if (!(mAddNote || mGenNotesFromContent)) {
             this.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
         }
 
@@ -914,6 +963,54 @@ public class NoteEditor extends AnkiActivity {
         return mAllModelIds != null;
     }
 
+    private void showContentGeneratedNotes() {
+        if (mResponse.startsWith("FAILED")) {
+            //do something
+            return;
+        }
+
+        Gson gson = new Gson();
+        Response resp = gson.fromJson(mResponse, Response.class);
+
+        if (resp == null) {
+            Timber.d("@dallon resp is null for some reason");
+            return;
+        }
+
+        if (!resp.getResult().contentEquals("ok")) {
+            Timber.d("@dallon got a 200 status code from remote server");
+            Timber.d("@dallon response from server:\n" + resp.getResult());
+            return;
+        }
+
+        int i = 0;
+
+        //mPossibleNotes = parseJson(resp, mLangCodeTo);
+
+        //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
+        // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
+    }
+
+    //TODO @dallon -- this private class is modified from very similar class in TranslationActivity.java
+    private class BackgroundGet extends AsyncTask<Void, Void, String> {
+
+        @Override
+        protected String doInBackground(Void... params) {
+            return HttpFetcher.fetchThroughHttp(mWebServiceAddress + mQueryString);
+        }
+
+
+        @Override
+        protected void onPostExecute(String result) {
+            //expect input as json
+            //progressDialog.dismiss();
+            mResponse = result;
+            Timber.d("@dallon response from remote: " + result);
+            showContentGeneratedNotes();
+        }
+
+    }
+
 
     @VisibleForTesting
     void saveNote() {
@@ -921,8 +1018,49 @@ public class NoteEditor extends AnkiActivity {
         if (mSelectedTags == null) {
             mSelectedTags = new ArrayList<>();
         }
-        // treat add new note and edit existing note independently
-        if (mAddNote) {
+        // treat generate notes from content and add new note and edit existing note independently
+        if (mGenNotesFromContent) {
+            //TODO @dallon - to talk to a stateful backend, we must either send a nonce or implement authentication
+            //TODO @dallon - auto set this to use cloze deletion cards
+
+            String inputLang = getTextFromField(mEditFields.get(0));
+            String inputContent = getTextFromField(mEditFields.get(1));
+
+            if (inputContent.isEmpty() || inputLang.isEmpty()){
+                displayErrorHandlingCustomContent();
+                return;
+            }
+            //build query string for remote endpoint
+            mQueryString = String.format("?inputLang=%s&inputContent= %s", inputLang, inputContent);
+
+            if(!Connection.isOnline()) {
+                int duration = Toast.LENGTH_SHORT;
+                Toast toast = Toast.makeText(this, getText(R.string.network_no_connection).toString(), duration);
+                toast.show();
+                return;
+            }
+
+            //TODO @dallon - change message arg to a new R.string value
+            //progressDialog = android.app.ProgressDialog.show(this, getText(R.string.multimedia_editor_progress_wait_title),
+            //        "Remote server is processing", true, true);
+
+            try {
+                mRemoteServerAsyncRequest = new BackgroundGet();
+                mRemoteServerAsyncRequest.execute();
+            } catch (Exception e) {
+                Timber.d(e, "@DALLON: caught an exception trying to execute a remote request");
+             //   progressDialog.dismiss();
+                int duration = Toast.LENGTH_SHORT;
+                Toast toast = Toast.makeText(this, getText(R.string.multimedia_editor_something_wrong), duration);
+                toast.show();
+            }
+
+            //Note: we parse the response and add each element as a note in the onPostExecute async method
+
+            //TODO: @dallon - not sure if I want to return here or closeNoteEditor()
+            return;
+        }
+        else if (mAddNote) {
             //Different from libAnki, block if there are no cloze deletions.
             //DEFECT: This does not block addition if cloze transpositions are in non-cloze fields.
             if (isClozeType() && !hasClozeDeletions()) {
@@ -1426,6 +1564,80 @@ public class NoteEditor extends AnkiActivity {
         return ret;
     }
 
+    private void populateContentInputFields(FieldChangeType type, boolean editModelMode){
+        List<FieldEditLine> editLines = mFieldState.loadFieldEditLines(type);
+        mFieldsLayoutContainer.removeAllViews();
+        mCustomViewIds.clear();
+        mEditFields = new LinkedList<>();
+
+        // Use custom font if selected from preferences
+        Typeface mCustomTypeface = null;
+        SharedPreferences preferences = AnkiDroidApp.getSharedPrefs(getBaseContext());
+        String customFont = preferences.getString("browserEditorFont", "");
+        if (!"".equals(customFont)) {
+            mCustomTypeface = AnkiFont.getTypeface(this, customFont);
+        }
+        ClipboardManager clipboard = ContextCompat.getSystemService(this, ClipboardManager.class);
+
+        FieldEditLine previous = null;
+
+        for (int i = 0; i < editLines.size(); i++) {
+            FieldEditLine edit_line_view = editLines.get(i);
+            mCustomViewIds.add(edit_line_view.getId());
+            FieldEditText newTextbox = edit_line_view.getEditText();
+            newTextbox.setImagePasteListener(this::onImagePaste);
+
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+                if (i == 0) {
+                    findViewById(R.id.note_deck_spinner).setNextFocusForwardId(newTextbox.getId());
+                }
+                if (previous != null) {
+                    previous.getLastViewInTabOrder().setNextFocusForwardId(newTextbox.getId());
+                }
+            }
+            previous = edit_line_view;
+
+            edit_line_view.setEnableAnimation(animationEnabled());
+
+            // TODO: Remove the >= 23 check - one callback works on API 11.
+            if (Build.VERSION.SDK_INT >= 23) {
+                // Use custom implementation of ActionMode.Callback customize selection and insert menus
+                Field f = new Field(getFieldByIndex(i), getCol());
+                ActionModeCallback actionModeCallback = new ActionModeCallback(newTextbox, f);
+                edit_line_view.setActionModeCallbacks(actionModeCallback);
+            }
+
+            edit_line_view.setTypeface(mCustomTypeface);
+            edit_line_view.setHintLocale(getHintLocaleForField(edit_line_view.getName()));
+            initFieldEditText(newTextbox, i, !editModelMode, clipboard);
+            mEditFields.add(newTextbox);
+            if (AnkiDroidApp.getSharedPrefs(this).getInt("note_editor_font_size", -1) > 0) {
+                newTextbox.setTextSize(AnkiDroidApp.getSharedPrefs(this).getInt("note_editor_font_size", -1));
+            }
+
+            ImageButton mediaButton = edit_line_view.getMediaButton();
+            // Load icons from attributes
+            int[] icons = Themes.getResFromAttr(this, new int[] { R.attr.attachFileImage, R.attr.upDownImage});
+            // Make the icon change between media icon and switch field icon depending on whether editing note type
+            if (editModelMode && allowFieldRemapping()) {
+                // Allow remapping if originally more than two fields
+                mediaButton.setBackgroundResource(icons[1]);
+                setRemapButtonListener(mediaButton, i);
+            } else if (editModelMode && !allowFieldRemapping()) {
+                mediaButton.setBackgroundResource(0);
+            } else {
+                // Use media editor button if not changing note type
+                mediaButton.setBackgroundResource(icons[0]);
+                setMMButtonListener(mediaButton, i);
+            }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && previous != null) {
+                previous.getLastViewInTabOrder().setNextFocusForwardId(R.id.CardEditorTagButton);
+            }
+
+            mediaButton.setContentDescription(getString(R.string.multimedia_editor_attach_mm_content, edit_line_view.getName()));
+            mFieldsLayoutContainer.addView(edit_line_view);
+        }
+    }
 
     private void populateEditFields(FieldChangeType type, boolean editModelMode) {
         List<FieldEditLine> editLines = mFieldState.loadFieldEditLines(type);
@@ -1867,7 +2079,8 @@ public class NoteEditor extends AnkiActivity {
         updateTags();
         updateCards(mEditorNote.model());
         updateToolbar();
-        populateEditFields(changeType, false);
+        if (mGenNotesFromContent) populateContentInputFields(changeType, false);
+        else populateEditFields(changeType, false);
     }
 
 
@@ -2059,6 +2272,15 @@ public class NoteEditor extends AnkiActivity {
             return true;
         }
         return false;
+    }
+
+    private String getTextFromField(FieldEditText field){
+        Editable fieldText = field.getText();
+        if (fieldText != null){
+            //TODO: @dallon -- we're going to send this in an http request, best to escape both user inputs right at the source
+            //TODO: @dallon -- does this need to return a single string despite conflicting usage of ' " \n in input?
+            return fieldText.toString().trim();
+        } else return "";
     }
 
 
