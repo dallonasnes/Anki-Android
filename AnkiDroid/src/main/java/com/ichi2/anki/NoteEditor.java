@@ -972,9 +972,13 @@ public class NoteEditor extends AnkiActivity {
 
         try {
             //TODO: @dallon - temporarily skipping parsing server response, since server isn't set up yet
-            ArrayList<String> notes = new ArrayList<String>(Arrays.asList("hey it's me just wanted to say hi", "hello friends!", "hello again!"));
+            ArrayList<String> notes = new ArrayList<String>(Arrays.asList("hey it's {{c1::me}} just wanted to say hi", "{{c1::hello}} friends!", "hello {{c1::again!}}"));
             //JSONObject json = new JSONObject(mResponse);
             //ArrayList<String> notes = (ArrayList<String>) json.get("notes");
+
+            //TODO: @dallon - for this to work, user must select a deck of type cloze
+            //i'm sure there's a way to preset that for them. also, we should use the generateCloze function native to this app
+            //and send json objects instead of just a simple pre-clozed array from the server
 
             //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
             // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
@@ -985,7 +989,6 @@ public class NoteEditor extends AnkiActivity {
 
                 String newValue = convertToHtmlNewline(s);
                 currentStringNote.values()[0] = newValue;
-                currentStringNote.values()[1] = newValue;
                 // Save deck to model
                 currentStringNote.model().put("did", mCurrentDid);
                 // Save tags to model
