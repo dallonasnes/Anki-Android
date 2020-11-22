@@ -100,6 +100,7 @@
     <string name="note_editor_set_field_language">Set field language</string>
     <string name="note_editor_no_cards_created_all_fields">The current note type did not produce any cards.\nPlease choose another note type, or click ‘Cards’ and add a field substitution</string>
     <string name="note_editor_insert_cloze_no_cloze_note_type">Cloze deletions will only work on a Cloze note type</string>
+    <string name="note_editor_failed_to_parse_input_for_gen_notes_from_content" translatable="false">Failed to parse one or both inputs for generating notes from custom content</string>
     <string name="saving_facts">Saving note</string>
     <string name="saving_model">Saving note type</string>
     <string name="save">Save</string>

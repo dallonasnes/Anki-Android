@@ -44,5 +44,15 @@
             fab:fab_title="@string/menu_add"
             fab:fab_size="mini"
             fab:fab_colorPressed="?attr/fab_pressed"/>
+        <com.getbase.floatingactionbutton.FloatingActionButton
+            android:id="@+id/gen_notes_from_content_action"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/menu_gen_notes_from_online_content"
+            fab:fab_colorNormal="?attr/fab_normal"
+            fab:fab_icon="@drawable/ic_add_white_24dp"
+            fab:fab_title="@string/menu_gen_notes_from_online_content"
+            fab:fab_size="mini"
+            fab:fab_colorPressed="?attr/fab_pressed"/>
     </com.getbase.floatingactionbutton.FloatingActionsMenu>
 </merge>

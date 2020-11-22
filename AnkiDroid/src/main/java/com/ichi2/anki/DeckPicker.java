@@ -179,6 +179,7 @@ public class DeckPicker extends NavigationDrawerActivity implements
     private static final int ADD_NOTE = 12;
     private static final int PICK_APKG_FILE = 13;
     private static final int PICK_EXPORT_FILE = 14;
+    private static final int GEN_NOTES_FROM_CONTENT = 15;
 
     // For automatic syncing
     // 10 minutes in milliseconds.
@@ -627,6 +628,7 @@ public class DeckPicker extends NavigationDrawerActivity implements
         final FloatingActionButton addDeckButton = findViewById(R.id.add_deck_action);
         final FloatingActionButton addSharedButton = findViewById(R.id.add_shared_action);
         final FloatingActionButton addNoteButton = findViewById(R.id.add_note_action);
+        final FloatingActionButton genNotesFromContentButton = findViewById(R.id.gen_notes_from_content_action);
         addDeckButton.setOnClickListener(view -> {
             if (mActionsMenu == null) {
                 return;
@@ -660,6 +662,11 @@ public class DeckPicker extends NavigationDrawerActivity implements
             Timber.i("Adding Note");
             mActionsMenu.collapse();
             addNote();
+        });
+        genNotesFromContentButton.setOnClickListener(view -> {
+            Timber.i("Generating notes from user input content");
+            mActionsMenu.collapse();
+            genNotesFromInputContent();
         });
     }
 
@@ -1150,6 +1157,13 @@ public class DeckPicker extends NavigationDrawerActivity implements
         Intent intent = new Intent(DeckPicker.this, NoteEditor.class);
         intent.putExtra(NoteEditor.EXTRA_CALLER, NoteEditor.CALLER_DECKPICKER);
         startActivityForResultWithAnimation(intent, ADD_NOTE, LEFT);
+    }
+
+    //TODO: change this func to use NoteGenerator.class instead of NoteEditor.class
+    public void genNotesFromInputContent() {
+        Intent intent = new Intent(DeckPicker.this, NoteEditor.class);
+        intent.putExtra(NoteEditor.EXTRA_CALLER, NoteEditor.CALLER_DECKPICKER_FOR_GEN_NOTES);
+        startActivityForResultWithAnimation(intent, GEN_NOTES_FROM_CONTENT, LEFT);
     }
 
 
