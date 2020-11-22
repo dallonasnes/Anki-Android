@@ -1,3 +1,4 @@
+```custom-branch: After you use a foreign language online - read an article, listen to a song, watch a youtube video - then update Anki with your new vocabulary, keeping track of which words are new and which are known. Maintained with current Anki-Android release```
 <p align="center">
 <img src="docs/graphics/logos/banner_readme.png"/>
 </p>
