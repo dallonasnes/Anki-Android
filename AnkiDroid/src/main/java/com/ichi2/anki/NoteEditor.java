@@ -977,10 +977,31 @@ public class NoteEditor extends AnkiActivity {
             //JSONObject json = new JSONObject(mResponse);
             //ArrayList<String> notes = (ArrayList<String>) json.get("notes");
 
-            //now want to turn these into notes
-
             //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
             // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
+            for (String s : notes){
+                //TODO: @dallon - is there a way to do this by referencing instead of cloning?
+                //perhaps there is even a standard way to batch create notes
+                Note currentStringNote = mEditorNote.clone();
+
+                String newValue = convertToHtmlNewline(s);
+                currentStringNote.values()[0] = newValue;
+                currentStringNote.values()[1] = newValue;
+                // Save deck to model
+                currentStringNote.model().put("did", mCurrentDid);
+                // Save tags to model
+                currentStringNote.setTagsFromStr(tagsAsString(mSelectedTags));
+                JSONArray tags = new JSONArray();
+                for (String t : mSelectedTags) {
+                    tags.put(t);
+                }
+                getCol().getModels().current().put("tags", tags);
+                getCol().getModels().setChanged();
+                //TODO: @dallon - maybe I can move some of these calls out of the loop
+                mReloadRequired = true;
+                CollectionTask.launchCollectionTask(ADD_NOTE, saveNoteHandler(), new TaskData(mEditorNote));
+            }
+
         } catch (Exception e){
             Timber.d(e, "@dallon caught an exception trying to parse notes from json response");
             return;
