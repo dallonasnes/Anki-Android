@@ -998,7 +998,7 @@ public class NoteEditor extends AnkiActivity {
                 getCol().getModels().setChanged();
                 //TODO: @dallon - maybe I can move some of these calls out of the loop
                 mReloadRequired = true;
-                CollectionTask.launchCollectionTask(ADD_NOTE, saveNoteHandler(), new TaskData(mEditorNote));
+                CollectionTask.launchCollectionTask(ADD_NOTE, saveNoteHandler(), new TaskData(currentStringNote));
             }
 
         } catch (Exception e){
