@@ -249,6 +249,7 @@ public class NoteEditor extends AnkiActivity {
     //private android.app.ProgressDialog progressDialog;
     private BackgroundGet mRemoteServerAsyncRequest = null;
     //remember that localhost points to the mobile device, not my computer
+    //10.0.2.2 points to local machine - https://stackoverflow.com/questions/5528850/how-do-you-connect-localhost-in-the-android-emulator
     private String mWebServiceAddress = "https://song-to-anki.herokuapp.com/mobile/content-to-anki/"; //don't forget the trailing / in the host address
     private String mQueryString = null;
     private String mResponse = null;
@@ -964,31 +965,26 @@ public class NoteEditor extends AnkiActivity {
     }
 
     private void showContentGeneratedNotes() {
-        if (mResponse.startsWith("FAILED")) {
-            //do something
+
+        if (mResponse == null){
+            Timber.d("@dallon mResponse is null for some reason");
             return;
         }
 
-        Gson gson = new Gson();
-        Response resp = gson.fromJson(mResponse, Response.class);
+        try {
+            //TODO: @dallon - temporarily skipping parsing server response, since server isn't set up yet
+            ArrayList<String> notes = new ArrayList<String>(Arrays.asList("hey it's me just wanted to say hi", "hello friends!", "hello again!"));
+            //JSONObject json = new JSONObject(mResponse);
+            //ArrayList<String> notes = (ArrayList<String>) json.get("notes");
 
-        if (resp == null) {
-            Timber.d("@dallon resp is null for some reason");
+            //now want to turn these into notes
+
+            //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
+            // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
+        } catch (Exception e){
+            Timber.d(e, "@dallon caught an exception trying to parse notes from json response");
             return;
         }
-
-        if (!resp.getResult().contentEquals("ok")) {
-            Timber.d("@dallon got a 200 status code from remote server");
-            Timber.d("@dallon response from server:\n" + resp.getResult());
-            return;
-        }
-
-        int i = 0;
-
-        //mPossibleNotes = parseJson(resp, mLangCodeTo);
-
-        //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
-        // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
     }
 
     //TODO @dallon -- this private class is modified from very similar class in TranslationActivity.java
@@ -1023,15 +1019,15 @@ public class NoteEditor extends AnkiActivity {
             //TODO @dallon - to talk to a stateful backend, we must either send a nonce or implement authentication
             //TODO @dallon - auto set this to use cloze deletion cards
 
-            String inputLang = getTextFromField(mEditFields.get(0));
-            String inputContent = getTextFromField(mEditFields.get(1));
+            String lang = getTextFromField(mEditFields.get(0));
+            String text = getTextFromField(mEditFields.get(1));
 
-            if (inputContent.isEmpty() || inputLang.isEmpty()){
+            if (text.isEmpty() || lang.isEmpty()){
                 displayErrorHandlingCustomContent();
                 return;
             }
             //build query string for remote endpoint
-            mQueryString = String.format("?inputLang=%s&inputContent= %s", inputLang, inputContent);
+            mQueryString = String.format("?lang=%s&text=%s", lang, text);
 
             if(!Connection.isOnline()) {
                 int duration = Toast.LENGTH_SHORT;
