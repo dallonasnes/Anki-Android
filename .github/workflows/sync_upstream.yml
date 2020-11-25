@@ -24,12 +24,19 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
-
-      # Runs a set of commands using the runners shell
+      - name: save current date
+        run: |
+          # do some operation that changes a file in the git repo
+          date > time.txt
+      - name: setup git config
+        run: |
+          # setup the username and email. I tend to use 'GitHub Actions Bot' with no email by default
+          git config user.name "GitHub Actions Bot"
+          git config user.email "<>"
       - name: Sync with upstream
         run: |
           git checkout main
-          git pull upstream master
+          git pull https://github.com/ankidroid/Anki-Android master
           git checkout custom-branch
           git checkout -b cb-backup
           git checkout -
