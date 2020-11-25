@@ -1,4 +1,4 @@
-# Custom Features
+# Customization for Language Learners
 
 I rely on Anki for vocab and grammar practice. As my language skills have advanced, I've found myself increasingly consuming real-life materials in the foreign language - books, articles, movies, etc. But making Anki cards from real-life materials is tough and time consuming. A novel may have dozens of new words per page, and stopping to make a new Anki note for each one detracts from the experience of reading. Further, it may take _forever_ to make cards that cover all of the new vocabulary. 
 
