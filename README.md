@@ -1,4 +1,16 @@
-```custom-branch: After you use a foreign language online - read an article, listen to a song, watch a youtube video - then update Anki with your new vocabulary, keeping track of which words are new and which are known. Maintained with current Anki-Android release```
+# Custom Features
+
+I rely on Anki for vocab and grammar practice. As my language skills have advanced, I've found myself increasingly consuming real-life materials in the foreign language - books, articles, movies, etc. But making Anki cards from real-life materials is tough and time consuming. A novel may have dozens of new words per page, and stopping to make a new Anki note for each one detracts from the experience of reading. Further, it may take _forever_ to make cards that cover all of the new vocabulary. 
+
+How can I make best learn _all_ of the new words I come across, without subjecting myself to a painstaking task that quickly becomes impractical?
+
+Changes in `custom-branch` in this repo seek to extend Anki to this use case. By checking out `custom-branch` and running the code locally, you will notice a new floating button that says `generate notes from custom content`.
+
+By clicking on this new button, you can input text - copied and pasted from an article, for example - or a URL to a YouTube video, online article, etc. Then, Anki notes from your input content will be automatically generated for you. Not just that, but new notes will be made _only_ for words that you don't already know.
+
+This way, you can practice your language skills on real-life materials without disruption to write down the words you missed, and instead focus on the content. Then, Anki notes will automatically be added to your Anki deck of choice, customized to only show the words you don't know, saving you time from making cards and reviewing redundant cards.
+#
+
 <p align="center">
 <img src="docs/graphics/logos/banner_readme.png"/>
 </p>
