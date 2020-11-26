@@ -66,7 +66,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.afollestad.materialdialogs.MaterialDialog;
-import com.google.gson.Gson;
 import com.ichi2.anki.dialogs.ConfirmationDialog;
 import com.ichi2.anki.dialogs.DiscardChangesDialog;
 import com.ichi2.anki.dialogs.IntegerDialog;
@@ -75,14 +74,12 @@ import com.ichi2.anki.dialogs.TagsDialog;
 import com.ichi2.anki.exception.ConfirmModSchemaException;
 import com.ichi2.anki.multimediacard.IMultimediaEditableNote;
 import com.ichi2.anki.multimediacard.activity.MultimediaEditFieldActivity;
-import com.ichi2.anki.multimediacard.activity.PickStringDialogFragment;
 import com.ichi2.anki.multimediacard.fields.AudioClipField;
 import com.ichi2.anki.multimediacard.fields.AudioRecordingField;
 import com.ichi2.anki.multimediacard.fields.EFieldType;
 import com.ichi2.anki.multimediacard.fields.IField;
 import com.ichi2.anki.multimediacard.fields.ImageField;
 import com.ichi2.anki.multimediacard.fields.TextField;
-import com.ichi2.anki.multimediacard.glosbe.json.Response;
 import com.ichi2.anki.multimediacard.impl.MultimediaEditableNote;
 import com.ichi2.anki.noteeditor.FieldState;
 import com.ichi2.anki.noteeditor.FieldState.FieldChangeType;
@@ -125,8 +122,11 @@ import com.ichi2.utils.JSONObject;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -135,6 +135,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.DialogFragment;
@@ -246,7 +247,7 @@ public class NoteEditor extends AnkiActivity {
     /* indicates if user selected to generate notes from content */
     private boolean mGenNotesFromContent;
     //private android.app.ProgressDialog progressDialog;
-    private BackgroundGet mRemoteServerAsyncRequest = null;
+    private BackgroundPost mRemoteServerAsyncRequest = null;
     //remember that localhost points to the mobile device, not my computer
     //10.0.2.2 points to local machine - https://stackoverflow.com/questions/5528850/how-do-you-connect-localhost-in-the-android-emulator
     private String mWebServiceAddress = "https://song-to-anki.herokuapp.com/mobile/content-to-anki/"; //don't forget the trailing / in the host address
@@ -1011,7 +1012,7 @@ public class NoteEditor extends AnkiActivity {
     }
 
     //TODO @dallon -- this private class is modified from very similar class in TranslationActivity.java
-    private class BackgroundGet extends AsyncTask<Void, Void, String> {
+    private class BackgroundPost extends AsyncTask<Void, Void, String> {
 
         @Override
         protected String doInBackground(Void... params) {
@@ -1028,6 +1029,21 @@ public class NoteEditor extends AnkiActivity {
             showContentGeneratedNotes();
         }
 
+    }
+
+    //we want deterministic nonce
+    //https://stackoverflow.com/questions/3934331/how-to-hash-a-string-in-android
+    private String md5(String s) throws NoSuchAlgorithmException {
+        // Create MD5 Hash
+        MessageDigest digest = java.security.MessageDigest.getInstance("MD5");
+        digest.update(s.getBytes());
+        byte messageDigest[] = digest.digest();
+
+        // Create Hex String
+        StringBuffer hexString = new StringBuffer();
+        for (int i=0; i<messageDigest.length; i++)
+            hexString.append(Integer.toHexString(0xFF & messageDigest[i]));
+        return hexString.toString();
     }
 
 
@@ -1064,9 +1080,24 @@ public class NoteEditor extends AnkiActivity {
             //        "Remote server is processing", true, true);
 
             try {
-                mRemoteServerAsyncRequest = new BackgroundGet();
+                //TODO @dallon -- write nonce to disk, then check if it already exists
+                String nonce;
+                //first try to get nonce from disk
+                //else make a new one
+                String id = UUID.randomUUID().toString();
+                String currentTime = Calendar.getInstance().getTime().toString();
+                nonce = md5(id + currentTime);
+
+                mRemoteServerAsyncRequest = new BackgroundPost();
                 mRemoteServerAsyncRequest.execute();
-            } catch (Exception e) {
+            } catch (NoSuchAlgorithmException e){
+                e.printStackTrace();
+                Timber.d(e, "@DALLON: caught an No Such Algorithm Exception trying to hash unique ID");
+                int duration = Toast.LENGTH_SHORT;
+                Toast toast = Toast.makeText(this, getText(R.string.multimedia_editor_something_wrong), duration);
+                toast.show();
+            }
+              catch (Exception e) {
                 Timber.d(e, "@DALLON: caught an exception trying to execute a remote request");
              //   progressDialog.dismiss();
                 int duration = Toast.LENGTH_SHORT;
