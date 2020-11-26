@@ -101,6 +101,7 @@ import com.ichi2.libanki.Note;
 import com.ichi2.libanki.Note.ClozeUtils;
 import com.ichi2.libanki.Utils;
 import com.ichi2.libanki.Deck;
+import com.ichi2.libanki.sync.Tls12SocketFactory;
 import com.ichi2.themes.StyledProgressDialog;
 import com.ichi2.themes.Themes;
 import com.ichi2.anki.widgets.PopupMenuWithIcons;
@@ -122,6 +123,7 @@ import com.ichi2.utils.JSONObject;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -136,9 +138,16 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.DialogFragment;
+import okhttp3.FormBody;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 import timber.log.Timber;
 
 import static com.ichi2.async.CollectionTask.TASK_TYPE.*;
@@ -251,9 +260,13 @@ public class NoteEditor extends AnkiActivity {
     //remember that localhost points to the mobile device, not my computer
     //10.0.2.2 points to local machine - https://stackoverflow.com/questions/5528850/how-do-you-connect-localhost-in-the-android-emulator
     private String mWebServiceAddress = "https://song-to-anki.herokuapp.com/mobile/content-to-anki/"; //don't forget the trailing / in the host address
-    private String mQueryString = null;
-    private String mResponse = null;
+    private String mNonce = null;
+    private String mText = null;
+    private String mLang = null;
+    private String mResponse = null; //TODO @dallon -- not sure if i still need this one
+    private Response mRemoteResponse = null;
     private String mPossibleNotes = null;
+    public static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
     /**
      * End custom GenNotesFromContent feature section
@@ -1016,7 +1029,47 @@ public class NoteEditor extends AnkiActivity {
 
         @Override
         protected String doInBackground(Void... params) {
-            return HttpFetcher.fetchThroughHttp(mWebServiceAddress + mQueryString);
+            try {
+                URL url = new URL(mWebServiceAddress);
+
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("nonce", mNonce);
+                jsonObject.put("text", mText);
+                jsonObject.put("lang", mLang);
+
+                Request.Builder requestBuilder = new Request.Builder();
+                requestBuilder.url(url);
+                RequestBody body = RequestBody.create(JSON, jsonObject.toString());
+
+                Request request = new Request.Builder()
+                        .url(url)
+                        .put(body)
+                        .build();
+
+                OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder();
+                clientBuilder.addNetworkInterceptor(chain -> chain.proceed(
+                        chain.request()
+                                .newBuilder()
+                                .header("Referer", "com.ichi2.anki")
+                                .header("User-Agent", "Mozilla/5.0 ( compatible ) ")
+                                .header("Accept", "*/*")
+                                .build()
+                ));
+                Tls12SocketFactory.enableTls12OnPreLollipop(clientBuilder)
+                        .connectTimeout(Connection.CONN_TIMEOUT, TimeUnit.SECONDS)
+                        .writeTimeout(Connection.CONN_TIMEOUT, TimeUnit.SECONDS)
+                        .readTimeout(Connection.CONN_TIMEOUT, TimeUnit.SECONDS);
+                OkHttpClient client = clientBuilder.build();
+                mRemoteResponse = client.newCall(request).execute();
+                return mRemoteResponse.body().string();
+
+            } catch (Exception e) {
+                return "FAILED " + e.getMessage();
+            } finally {
+                if (mRemoteResponse != null && mRemoteResponse.body() != null) {
+                    mRemoteResponse.body().close();
+                }
+            }
         }
 
 
@@ -1025,6 +1078,7 @@ public class NoteEditor extends AnkiActivity {
             //expect input as json
             //progressDialog.dismiss();
             mResponse = result;
+            Response temp = mRemoteResponse; //TODO @dallon -- don't need this after testing
             Timber.d("@dallon response from remote: " + result);
             showContentGeneratedNotes();
         }
@@ -1058,15 +1112,13 @@ public class NoteEditor extends AnkiActivity {
             //TODO @dallon - to talk to a stateful backend, we must either send a nonce or implement authentication
             //TODO @dallon - auto set this to use cloze deletion cards
 
-            String lang = getTextFromField(mEditFields.get(0));
-            String text = getTextFromField(mEditFields.get(1));
+            mLang = getTextFromField(mEditFields.get(0));
+            mText = getTextFromField(mEditFields.get(1));
 
-            if (text.isEmpty() || lang.isEmpty()){
+            if (mText.isEmpty() || mLang.isEmpty()){
                 displayErrorHandlingCustomContent();
                 return;
             }
-            //build query string for remote endpoint
-            mQueryString = String.format("?lang=%s&text=%s", lang, text);
 
             if(!Connection.isOnline()) {
                 int duration = Toast.LENGTH_SHORT;
@@ -1081,12 +1133,11 @@ public class NoteEditor extends AnkiActivity {
 
             try {
                 //TODO @dallon -- write nonce to disk, then check if it already exists
-                String nonce;
                 //first try to get nonce from disk
                 //else make a new one
                 String id = UUID.randomUUID().toString();
                 String currentTime = Calendar.getInstance().getTime().toString();
-                nonce = md5(id + currentTime);
+                mNonce = md5(id + currentTime);
 
                 mRemoteServerAsyncRequest = new BackgroundPost();
                 mRemoteServerAsyncRequest.execute();
