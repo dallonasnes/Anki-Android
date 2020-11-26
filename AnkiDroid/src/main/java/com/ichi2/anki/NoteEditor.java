@@ -984,11 +984,19 @@ public class NoteEditor extends AnkiActivity {
             return;
         }
 
+        //TODO: @dallon -- there are failure cases from the server we need to handle here
+        //eg requested youtube video doesn't have captions...need to handle those sorts of cases before trying to parse notes
+
         try {
             //TODO: @dallon - temporarily skipping parsing server response, since server isn't set up yet
-            ArrayList<String> notes = new ArrayList<String>(Arrays.asList("hey it's {{c1::me}} just wanted to say hi", "{{c1::hello}} friends!", "hello {{c1::again!}}"));
-            //JSONObject json = new JSONObject(mResponse);
-            //ArrayList<String> notes = (ArrayList<String>) json.get("notes");
+            ArrayList<String> notes = new ArrayList<>();
+            JSONObject json = new JSONObject(mResponse);
+            JSONArray jsonNotes = json.getJSONArray("notes");
+            if (jsonNotes == null) throw new Exception("Failed to parse notes from JSON response array");
+            //now parse all elements of the array into our list
+            for (int i = 0; i < jsonNotes.length(); i++){
+                notes.add(jsonNotes.getString(i));
+            }
 
             //TODO: @dallon - for this to work, user must select a deck of type cloze
             //i'm sure there's a way to preset that for them. also, we should use the generateCloze function native to this app
@@ -1075,11 +1083,10 @@ public class NoteEditor extends AnkiActivity {
 
         @Override
         protected void onPostExecute(String result) {
-            //expect input as json
             //progressDialog.dismiss();
             mResponse = result;
-            Response temp = mRemoteResponse; //TODO @dallon -- don't need this after testing
             Timber.d("@dallon response from remote: " + result);
+            //TODO: @dallon -- fork what we show based on mRemoteResponse status code
             showContentGeneratedNotes();
         }
 
