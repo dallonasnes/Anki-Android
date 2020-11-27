@@ -74,6 +74,7 @@ import com.ichi2.anki.dialogs.TagsDialog;
 import com.ichi2.anki.exception.ConfirmModSchemaException;
 import com.ichi2.anki.multimediacard.IMultimediaEditableNote;
 import com.ichi2.anki.multimediacard.activity.MultimediaEditFieldActivity;
+import com.ichi2.anki.multimediacard.activity.PickStringDialogFragment;
 import com.ichi2.anki.multimediacard.fields.AudioClipField;
 import com.ichi2.anki.multimediacard.fields.AudioRecordingField;
 import com.ichi2.anki.multimediacard.fields.EFieldType;
@@ -267,6 +268,7 @@ public class NoteEditor extends AnkiActivity {
     private Response mRemoteResponse = null;
     private String mPossibleNotes = null;
     public static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+    public static final String CUSTOM_NONCE = "customNonce";
 
     /**
      * End custom GenNotesFromContent feature section
@@ -1004,6 +1006,7 @@ public class NoteEditor extends AnkiActivity {
 
             //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
             // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
+
             for (String s : notes){
                 //TODO: @dallon - is there a way to do this by referencing instead of cloning?
                 //perhaps there is even a standard way to batch create notes
@@ -1025,6 +1028,8 @@ public class NoteEditor extends AnkiActivity {
                 mReloadRequired = true;
                 CollectionTask.launchCollectionTask(ADD_NOTE, saveNoteHandler(), new TaskData(currentStringNote));
             }
+
+            //TODO: @dallon -- once this finishes, should sync anki db with remote
 
         } catch (Exception e){
             Timber.d(e, "@dallon caught an exception trying to parse notes from json response");
@@ -1116,7 +1121,6 @@ public class NoteEditor extends AnkiActivity {
         }
         // treat generate notes from content and add new note and edit existing note independently
         if (mGenNotesFromContent) {
-            //TODO @dallon - to talk to a stateful backend, we must either send a nonce or implement authentication
             //TODO @dallon - auto set this to use cloze deletion cards
 
             mLang = getTextFromField(mEditFields.get(0));
@@ -1139,12 +1143,26 @@ public class NoteEditor extends AnkiActivity {
             //        "Remote server is processing", true, true);
 
             try {
-                //TODO @dallon -- write nonce to disk, then check if it already exists
-                //first try to get nonce from disk
-                //else make a new one
-                String id = UUID.randomUUID().toString();
-                String currentTime = Calendar.getInstance().getTime().toString();
-                mNonce = md5(id + currentTime);
+                //TODO @dallon -- do this on main screen and store it in mNonce, so that I don't have to query disk every time
+                //TODO @dallon -- for persistence beyond upgrades, backup the nonce somewhere else, eg https://stackoverflow.com/questions/12637737/what-will-happen-to-the-sharedpreferences-on-update-an-android-app
+                //we use the nonce on remote server to keep track of known words
+                if (mNonce == null) {
+                    //check if we already have a nonce
+                    SharedPreferences sharedPref = getApplicationContext().getSharedPreferences(CUSTOM_NONCE, Context.MODE_PRIVATE);
+                    String possibleNonce = sharedPref.getString(CUSTOM_NONCE, "");
+                    if (possibleNonce.isEmpty()) {
+                        //else make a new one
+                        String id = UUID.randomUUID().toString();
+                        String currentTime = Calendar.getInstance().getTime().toString();
+                        possibleNonce = md5(id + currentTime);
+                        //now write it to disk
+                        SharedPreferences.Editor editor = sharedPref.edit();
+                        editor.putString(CUSTOM_NONCE, possibleNonce);
+                        editor.apply();
+                    }
+
+                    mNonce = possibleNonce;
+                }
 
                 mRemoteServerAsyncRequest = new BackgroundPost();
                 mRemoteServerAsyncRequest.execute();
