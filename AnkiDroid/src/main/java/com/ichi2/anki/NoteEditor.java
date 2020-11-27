@@ -61,6 +61,7 @@ import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -74,7 +75,6 @@ import com.ichi2.anki.dialogs.TagsDialog;
 import com.ichi2.anki.exception.ConfirmModSchemaException;
 import com.ichi2.anki.multimediacard.IMultimediaEditableNote;
 import com.ichi2.anki.multimediacard.activity.MultimediaEditFieldActivity;
-import com.ichi2.anki.multimediacard.activity.PickStringDialogFragment;
 import com.ichi2.anki.multimediacard.fields.AudioClipField;
 import com.ichi2.anki.multimediacard.fields.AudioRecordingField;
 import com.ichi2.anki.multimediacard.fields.EFieldType;
@@ -88,7 +88,6 @@ import com.ichi2.anki.noteeditor.CustomToolbarButton;
 import com.ichi2.anki.noteeditor.Toolbar;
 import com.ichi2.anki.receiver.SdCardReceiver;
 import com.ichi2.anki.servicelayer.NoteService;
-import com.ichi2.anki.web.HttpFetcher;
 import com.ichi2.async.CollectionTask;
 import com.ichi2.async.Connection;
 import com.ichi2.async.TaskListenerWithContext;
@@ -143,7 +142,6 @@ import java.util.concurrent.TimeUnit;
 
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.DialogFragment;
-import okhttp3.FormBody;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -256,10 +254,7 @@ public class NoteEditor extends AnkiActivity {
      */
     /* indicates if user selected to generate notes from content */
     private boolean mGenNotesFromContent;
-    //private android.app.ProgressDialog progressDialog;
     private BackgroundPost mRemoteServerAsyncRequest = null;
-    //remember that localhost points to the mobile device, not my computer
-    //10.0.2.2 points to local machine - https://stackoverflow.com/questions/5528850/how-do-you-connect-localhost-in-the-android-emulator
     private String mWebServiceAddress = "https://song-to-anki.herokuapp.com/mobile/content-to-anki/"; //don't forget the trailing / in the host address
     private String mNonce = null;
     private String mText = null;
@@ -399,7 +394,11 @@ public class NoteEditor extends AnkiActivity {
     }
 
     protected @StringRes int getGenNotesFromContentErrorResource(){
-        return R.string.note_editor_failed_to_parse_input_for_gen_notes_from_content;
+        if (!this.isClozeType()) {
+            return R.string.note_editor_gen_notes_from_content_requires_cloze_deck;
+        } else {
+            return R.string.note_editor_failed_to_parse_input_for_gen_notes_from_content;
+        }
     }
 
     protected @StringRes int getAddNoteErrorResource() {
@@ -986,11 +985,7 @@ public class NoteEditor extends AnkiActivity {
             return;
         }
 
-        //TODO: @dallon -- there are failure cases from the server we need to handle here
-        //eg requested youtube video doesn't have captions...need to handle those sorts of cases before trying to parse notes
-
         try {
-            //TODO: @dallon - temporarily skipping parsing server response, since server isn't set up yet
             ArrayList<String> notes = new ArrayList<>();
             JSONObject json = new JSONObject(mResponse);
             JSONArray jsonNotes = json.getJSONArray("notes");
@@ -999,10 +994,6 @@ public class NoteEditor extends AnkiActivity {
             for (int i = 0; i < jsonNotes.length(); i++){
                 notes.add(jsonNotes.getString(i));
             }
-
-            //TODO: @dallon - for this to work, user must select a deck of type cloze
-            //i'm sure there's a way to preset that for them. also, we should use the generateCloze function native to this app
-            //and send json objects instead of just a simple pre-clozed array from the server
 
             //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
             // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
@@ -1029,15 +1020,19 @@ public class NoteEditor extends AnkiActivity {
                 CollectionTask.launchCollectionTask(ADD_NOTE, saveNoteHandler(), new TaskData(currentStringNote));
             }
 
-            //TODO: @dallon -- once this finishes, should sync anki db with remote
+            //TODO: @dallon -- once this finishes, should we sync anki db with remote?
+            closeNoteEditor();
 
         } catch (Exception e){
             Timber.d(e, "@dallon caught an exception trying to parse notes from json response");
+            int duration = Toast.LENGTH_LONG;
+            //TODO: @dallon -- i8n this message
+            Toast toast = Toast.makeText(getApplicationContext(), getString(R.string.remote_processing_failed), duration);
+            toast.show();
             return;
         }
     }
 
-    //TODO @dallon -- this private class is modified from very similar class in TranslationActivity.java
     private class BackgroundPost extends AsyncTask<Void, Void, String> {
 
         @Override
@@ -1090,7 +1085,6 @@ public class NoteEditor extends AnkiActivity {
         protected void onPostExecute(String result) {
             //progressDialog.dismiss();
             mResponse = result;
-            Timber.d("@dallon response from remote: " + result);
             if (mRemoteResponse.isSuccessful()) {
                 showContentGeneratedNotes();
             } else {
@@ -1099,7 +1093,6 @@ public class NoteEditor extends AnkiActivity {
                 Toast toast = Toast.makeText(getApplicationContext(), getString(R.string.remote_processing_failed), duration);
                 toast.show();
             }
-
         }
 
     }
@@ -1128,8 +1121,10 @@ public class NoteEditor extends AnkiActivity {
         }
         // treat generate notes from content and add new note and edit existing note independently
         if (mGenNotesFromContent) {
-            //TODO @dallon - auto set this to use cloze deletion cards
-
+            if (!isClozeType()) {
+                displayErrorHandlingCustomContent();
+                return;
+            }
             mLang = getTextFromField(mEditFields.get(0));
             mText = getTextFromField(mEditFields.get(1));
 
@@ -1146,8 +1141,9 @@ public class NoteEditor extends AnkiActivity {
             }
 
             //TODO @dallon - change message arg to a new R.string value
-            //progressDialog = android.app.ProgressDialog.show(this, getText(R.string.multimedia_editor_progress_wait_title),
+            //mGenNotesProgressDialog = android.app.ProgressDialog.show(this, getText(R.string.multimedia_editor_progress_wait_title),
             //        "Remote server is processing", true, true);
+            //** progressDialog is deprecated, try using this instead: https://stackoverflow.com/questions/45373007/progressdialog-is-deprecated-what-is-the-alternate-one-to-use
 
             try {
                 //TODO @dallon -- do this on main screen and store it in mNonce, so that I don't have to query disk every time
@@ -1173,24 +1169,13 @@ public class NoteEditor extends AnkiActivity {
 
                 mRemoteServerAsyncRequest = new BackgroundPost();
                 mRemoteServerAsyncRequest.execute();
-            } catch (NoSuchAlgorithmException e){
-                e.printStackTrace();
-                Timber.d(e, "@DALLON: caught an No Such Algorithm Exception trying to hash unique ID");
-                int duration = Toast.LENGTH_SHORT;
-                Toast toast = Toast.makeText(this, getText(R.string.multimedia_editor_something_wrong), duration);
-                toast.show();
-            }
-              catch (Exception e) {
+            } catch (Exception e) {
                 Timber.d(e, "@DALLON: caught an exception trying to execute a remote request");
-             //   progressDialog.dismiss();
+                //mGenNotesProgressDialog.dismiss();
                 int duration = Toast.LENGTH_SHORT;
                 Toast toast = Toast.makeText(this, getText(R.string.multimedia_editor_something_wrong), duration);
                 toast.show();
             }
-
-            //Note: we parse the response and add each element as a note in the onPostExecute async method
-
-            //TODO: @dallon - not sure if I want to return here or closeNoteEditor()
             return;
         }
         else if (mAddNote) {
