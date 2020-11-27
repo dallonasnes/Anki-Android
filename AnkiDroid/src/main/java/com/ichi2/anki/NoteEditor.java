@@ -1004,7 +1004,7 @@ public class NoteEditor extends AnkiActivity {
             //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
             // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
 
-            mCurrentDid = getCol().getModels().current().getLong("did");
+            //mCurrentDid = getCol().getModels().current().getLong("did");
             getCol().getDecks().flush(); // is it okay to move this outside the for-loop? Is it needed at all?
             SupportSQLiteDatabase sqldb = getCol().getDb().getDatabase();
 
@@ -1041,7 +1041,12 @@ public class NoteEditor extends AnkiActivity {
             toast.show();
             getCol().getModels().setChanged();
             mReloadRequired = true;
-            closeNoteEditor();
+            try {
+                closeNoteEditor();
+            } catch (Exception e) {
+                //user must have manually closed out
+            }
+
 
         } catch (Exception e){
             Timber.d(e, "@dallon caught an exception trying to parse notes from json response");
@@ -1161,7 +1166,7 @@ public class NoteEditor extends AnkiActivity {
             }
 
             //TODO @dallon - i8n this
-            mGenNotesProgressDialog = StyledProgressDialog.show(this, "Remote server is processing", "Remote server is processing", true);
+            mGenNotesProgressDialog = StyledProgressDialog.show(this, "Your custom cards are processing", "We'll let you know when it's finished", true);
 
             try {
                 //TODO @dallon -- do this on main screen and store it in mNonce, so that I don't have to query disk every time
