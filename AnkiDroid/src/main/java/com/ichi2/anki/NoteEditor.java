@@ -264,6 +264,8 @@ public class NoteEditor extends AnkiActivity {
     private String mPossibleNotes = null;
     public static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     public static final String CUSTOM_NONCE = "customNonce";
+    //TODO: @dallon -- i8n this
+    private String[] mInputFieldNamesForGenContent = new String[] {"Content Language", "Custom Content"};
 
     /**
      * End custom GenNotesFromContent feature section
@@ -997,7 +999,7 @@ public class NoteEditor extends AnkiActivity {
 
             //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
             // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
-
+            mReloadRequired = true;
             for (String s : notes){
                 //TODO: @dallon - is there a way to do this by referencing instead of cloning?
                 //perhaps there is even a standard way to batch create notes
@@ -1016,11 +1018,14 @@ public class NoteEditor extends AnkiActivity {
                 getCol().getModels().current().put("tags", tags);
                 getCol().getModels().setChanged();
                 //TODO: @dallon - maybe I can move some of these calls out of the loop
-                mReloadRequired = true;
                 CollectionTask.launchCollectionTask(ADD_NOTE, saveNoteHandler(), new TaskData(currentStringNote));
             }
 
             //TODO: @dallon -- once this finishes, should we sync anki db with remote?
+
+            //TODO: @dallon -- i8n this message
+            Toast toast = Toast.makeText(getApplicationContext(), "Generated notes added successfully!", Toast.LENGTH_LONG);
+            toast.show();
             closeNoteEditor();
 
         } catch (Exception e){
@@ -1682,81 +1687,6 @@ public class NoteEditor extends AnkiActivity {
         return ret;
     }
 
-    private void populateContentInputFields(FieldChangeType type, boolean editModelMode){
-        List<FieldEditLine> editLines = mFieldState.loadFieldEditLines(type);
-        mFieldsLayoutContainer.removeAllViews();
-        mCustomViewIds.clear();
-        mEditFields = new LinkedList<>();
-
-        // Use custom font if selected from preferences
-        Typeface mCustomTypeface = null;
-        SharedPreferences preferences = AnkiDroidApp.getSharedPrefs(getBaseContext());
-        String customFont = preferences.getString("browserEditorFont", "");
-        if (!"".equals(customFont)) {
-            mCustomTypeface = AnkiFont.getTypeface(this, customFont);
-        }
-        ClipboardManager clipboard = ContextCompat.getSystemService(this, ClipboardManager.class);
-
-        FieldEditLine previous = null;
-
-        for (int i = 0; i < editLines.size(); i++) {
-            FieldEditLine edit_line_view = editLines.get(i);
-            mCustomViewIds.add(edit_line_view.getId());
-            FieldEditText newTextbox = edit_line_view.getEditText();
-            newTextbox.setImagePasteListener(this::onImagePaste);
-
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-                if (i == 0) {
-                    findViewById(R.id.note_deck_spinner).setNextFocusForwardId(newTextbox.getId());
-                }
-                if (previous != null) {
-                    previous.getLastViewInTabOrder().setNextFocusForwardId(newTextbox.getId());
-                }
-            }
-            previous = edit_line_view;
-
-            edit_line_view.setEnableAnimation(animationEnabled());
-
-            // TODO: Remove the >= 23 check - one callback works on API 11.
-            if (Build.VERSION.SDK_INT >= 23) {
-                // Use custom implementation of ActionMode.Callback customize selection and insert menus
-                Field f = new Field(getFieldByIndex(i), getCol());
-                ActionModeCallback actionModeCallback = new ActionModeCallback(newTextbox, f);
-                edit_line_view.setActionModeCallbacks(actionModeCallback);
-            }
-
-            edit_line_view.setTypeface(mCustomTypeface);
-            edit_line_view.setHintLocale(getHintLocaleForField(edit_line_view.getName()));
-            initFieldEditText(newTextbox, i, !editModelMode, clipboard);
-            mEditFields.add(newTextbox);
-            if (AnkiDroidApp.getSharedPrefs(this).getInt("note_editor_font_size", -1) > 0) {
-                newTextbox.setTextSize(AnkiDroidApp.getSharedPrefs(this).getInt("note_editor_font_size", -1));
-            }
-
-            ImageButton mediaButton = edit_line_view.getMediaButton();
-            // Load icons from attributes
-            int[] icons = Themes.getResFromAttr(this, new int[] { R.attr.attachFileImage, R.attr.upDownImage});
-            // Make the icon change between media icon and switch field icon depending on whether editing note type
-            if (editModelMode && allowFieldRemapping()) {
-                // Allow remapping if originally more than two fields
-                mediaButton.setBackgroundResource(icons[1]);
-                setRemapButtonListener(mediaButton, i);
-            } else if (editModelMode && !allowFieldRemapping()) {
-                mediaButton.setBackgroundResource(0);
-            } else {
-                // Use media editor button if not changing note type
-                mediaButton.setBackgroundResource(icons[0]);
-                setMMButtonListener(mediaButton, i);
-            }
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && previous != null) {
-                previous.getLastViewInTabOrder().setNextFocusForwardId(R.id.CardEditorTagButton);
-            }
-
-            mediaButton.setContentDescription(getString(R.string.multimedia_editor_attach_mm_content, edit_line_view.getName()));
-            mFieldsLayoutContainer.addView(edit_line_view);
-        }
-    }
-
     private void populateEditFields(FieldChangeType type, boolean editModelMode) {
         List<FieldEditLine> editLines = mFieldState.loadFieldEditLines(type);
         mFieldsLayoutContainer.removeAllViews();
@@ -1777,6 +1707,7 @@ public class NoteEditor extends AnkiActivity {
         for (int i = 0; i < editLines.size(); i++) {
             FieldEditLine edit_line_view = editLines.get(i);
             mCustomViewIds.add(edit_line_view.getId());
+            if (mGenNotesFromContent) edit_line_view.setName(mInputFieldNamesForGenContent[i]);
             FieldEditText newTextbox = edit_line_view.getEditText();
             newTextbox.setImagePasteListener(this::onImagePaste);
 
@@ -2193,8 +2124,7 @@ public class NoteEditor extends AnkiActivity {
         updateTags();
         updateCards(mEditorNote.model());
         updateToolbar();
-        if (mGenNotesFromContent) populateContentInputFields(changeType, false);
-        else populateEditFields(changeType, false);
+        populateEditFields(changeType, false);
     }
 
 
