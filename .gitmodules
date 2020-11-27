@@ -1,0 +1,3 @@
+[submodule "song-to-anki"]
+	path = song-to-anki
+	url = https://github.com/dallonasnes/song-to-anki
