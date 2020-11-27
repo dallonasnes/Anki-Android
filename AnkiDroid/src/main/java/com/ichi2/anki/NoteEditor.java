@@ -1091,8 +1091,15 @@ public class NoteEditor extends AnkiActivity {
             //progressDialog.dismiss();
             mResponse = result;
             Timber.d("@dallon response from remote: " + result);
-            //TODO: @dallon -- fork what we show based on mRemoteResponse status code
-            showContentGeneratedNotes();
+            if (mRemoteResponse.isSuccessful()) {
+                showContentGeneratedNotes();
+            } else {
+                int duration = Toast.LENGTH_LONG;
+                //TODO: @dallon -- i8n this message
+                Toast toast = Toast.makeText(getApplicationContext(), getString(R.string.remote_processing_failed), duration);
+                toast.show();
+            }
+
         }
 
     }
