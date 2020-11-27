@@ -22,6 +22,7 @@ import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.BroadcastReceiver;
 import android.content.ClipboardManager;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -95,6 +96,7 @@ import com.ichi2.compat.CompatHelper;
 import com.ichi2.libanki.Card;
 import com.ichi2.libanki.Collection;
 import com.ichi2.libanki.Consts;
+import com.ichi2.libanki.DB;
 import com.ichi2.libanki.Models;
 import com.ichi2.libanki.Model;
 import com.ichi2.libanki.Note;
@@ -142,6 +144,7 @@ import java.util.concurrent.TimeUnit;
 
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.DialogFragment;
+import androidx.sqlite.db.SupportSQLiteDatabase;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -263,6 +266,7 @@ public class NoteEditor extends AnkiActivity {
     private Response mRemoteResponse = null;
     private String mPossibleNotes = null;
     public static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+    private MaterialDialog mGenNotesProgressDialog;
     public static final String CUSTOM_NONCE = "customNonce";
     //TODO: @dallon -- i8n this
     private String[] mInputFieldNamesForGenContent = new String[] {"Content Language", "Custom Content"};
@@ -999,26 +1003,35 @@ public class NoteEditor extends AnkiActivity {
 
             //TODO: @dallon - maybe the user should pick amongst the returned cards to see which they like
             // for starter code to that see showPickTranslationDialog() in TranslationActivity.java
-            mReloadRequired = true;
-            for (String s : notes){
-                //TODO: @dallon - is there a way to do this by referencing instead of cloning?
-                //perhaps there is even a standard way to batch create notes
-                Note currentStringNote = mEditorNote.clone();
 
-                String newValue = convertToHtmlNewline(s);
-                currentStringNote.values()[0] = newValue;
-                // Save deck to model
-                currentStringNote.model().put("did", mCurrentDid);
-                // Save tags to model
-                currentStringNote.setTagsFromStr(tagsAsString(mSelectedTags));
-                JSONArray tags = new JSONArray();
-                for (String t : mSelectedTags) {
-                    tags.put(t);
+            mCurrentDid = getCol().getModels().current().getLong("did");
+            getCol().getDecks().flush(); // is it okay to move this outside the for-loop? Is it needed at all?
+            SupportSQLiteDatabase sqldb = getCol().getDb().getDatabase();
+
+            //TODO: @dallon -- should find a way to safely do this without nesting try blocks
+            try {
+                int result = 0;
+                sqldb.beginTransaction();
+                for (int i = 0; i < notes.size(); i++) {
+                    String value = notes.get(i);
+
+                    // Create empty note
+                    com.ichi2.libanki.Note newNote = new com.ichi2.libanki.Note(getCol(), getCol().getModels().current()); // for some reason we cannot pass modelId in here
+                    // Set fields
+                    newNote.setField(0, value);
+                    // Set tags //TODO: @dallon -- I just ignored tags for the time being
+                    // Add to collection
+                    getCol().addNote(newNote);
+                    for (Card card : newNote.cards()) {
+                        card.setDid(mCurrentDid);
+                        card.flush();
+                    }
+                    result++;
                 }
-                getCol().getModels().current().put("tags", tags);
-                getCol().getModels().setChanged();
-                //TODO: @dallon - maybe I can move some of these calls out of the loop
-                CollectionTask.launchCollectionTask(ADD_NOTE, saveNoteHandler(), new TaskData(currentStringNote));
+                getCol().save();
+                sqldb.setTransactionSuccessful();
+            } finally {
+                DB.safeEndInTransaction(sqldb);
             }
 
             //TODO: @dallon -- once this finishes, should we sync anki db with remote?
@@ -1026,6 +1039,8 @@ public class NoteEditor extends AnkiActivity {
             //TODO: @dallon -- i8n this message
             Toast toast = Toast.makeText(getApplicationContext(), "Generated notes added successfully!", Toast.LENGTH_LONG);
             toast.show();
+            getCol().getModels().setChanged();
+            mReloadRequired = true;
             closeNoteEditor();
 
         } catch (Exception e){
@@ -1034,7 +1049,6 @@ public class NoteEditor extends AnkiActivity {
             //TODO: @dallon -- i8n this message
             Toast toast = Toast.makeText(getApplicationContext(), getString(R.string.remote_processing_failed), duration);
             toast.show();
-            return;
         }
     }
 
@@ -1077,6 +1091,7 @@ public class NoteEditor extends AnkiActivity {
                 return mRemoteResponse.body().string();
 
             } catch (Exception e) {
+                if (mGenNotesProgressDialog.isShowing()) mGenNotesProgressDialog.dismiss();
                 return "FAILED " + e.getMessage();
             } finally {
                 if (mRemoteResponse != null && mRemoteResponse.body() != null) {
@@ -1088,7 +1103,7 @@ public class NoteEditor extends AnkiActivity {
 
         @Override
         protected void onPostExecute(String result) {
-            //progressDialog.dismiss();
+            if (mGenNotesProgressDialog.isShowing()) mGenNotesProgressDialog.dismiss();
             mResponse = result;
             if (mRemoteResponse.isSuccessful()) {
                 showContentGeneratedNotes();
@@ -1145,10 +1160,8 @@ public class NoteEditor extends AnkiActivity {
                 return;
             }
 
-            //TODO @dallon - change message arg to a new R.string value
-            //mGenNotesProgressDialog = android.app.ProgressDialog.show(this, getText(R.string.multimedia_editor_progress_wait_title),
-            //        "Remote server is processing", true, true);
-            //** progressDialog is deprecated, try using this instead: https://stackoverflow.com/questions/45373007/progressdialog-is-deprecated-what-is-the-alternate-one-to-use
+            //TODO @dallon - i8n this
+            mGenNotesProgressDialog = StyledProgressDialog.show(this, "Remote server is processing", "Remote server is processing", true);
 
             try {
                 //TODO @dallon -- do this on main screen and store it in mNonce, so that I don't have to query disk every time
@@ -1176,9 +1189,8 @@ public class NoteEditor extends AnkiActivity {
                 mRemoteServerAsyncRequest.execute();
             } catch (Exception e) {
                 Timber.d(e, "@DALLON: caught an exception trying to execute a remote request");
-                //mGenNotesProgressDialog.dismiss();
-                int duration = Toast.LENGTH_SHORT;
-                Toast toast = Toast.makeText(this, getText(R.string.multimedia_editor_something_wrong), duration);
+                if (mGenNotesProgressDialog.isShowing()) mGenNotesProgressDialog.dismiss();
+                Toast toast = Toast.makeText(this, getText(R.string.multimedia_editor_something_wrong), Toast.LENGTH_SHORT);
                 toast.show();
             }
             return;
