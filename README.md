@@ -1,5 +1,7 @@
 # Customization for Language Learners
 
+Demo video here: https://www.youtube.com/watch?v=4VOCcvUNPek
+
 I rely on Anki for vocab and grammar practice. As my language skills have advanced, I've found myself increasingly consuming real-life materials in the foreign language - books, articles, movies, etc. But making Anki cards from real-life materials is tough and time consuming. A novel may have dozens of new words per page, and stopping to make a new Anki note for each one detracts from the experience of reading. Further, it may take _forever_ to make cards that cover all of the new vocabulary. 
 
 How can I best learn _all_ of the new words I come across, without subjecting myself to a painstaking task that quickly becomes impractical?
